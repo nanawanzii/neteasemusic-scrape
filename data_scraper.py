@@ -28,10 +28,24 @@ class NetEaseMusicScraper:
             response = requests.post(self.base_url, headers=self.headers, data=self.data_payload)
             response.raise_for_status()
             
+            # 检查响应内容类型
+            content_type = response.headers.get('content-type', '')
+            if 'application/json' not in content_type:
+                print(f"响应不是JSON格式: {content_type}")
+                print(f"响应内容前100字符: {response.text[:100]}")
+                return None
+            
             data_json = response.json()
+            
+            # 检查API响应结构
+            if "data" not in data_json:
+                print(f"API响应格式错误: {data_json}")
+                return None
+                
             songs = data_json.get("data", {}).get("list", [])
             
             if not songs:
+                print("没有获取到歌曲数据")
                 return None
                 
             df = pd.DataFrame(songs)
@@ -40,8 +54,12 @@ class NetEaseMusicScraper:
         except requests.RequestException as e:
             print(f"请求错误: {e}")
             return None
-        except (KeyError, json.JSONDecodeError) as e:
-            print(f"数据解析错误: {e}")
+        except json.JSONDecodeError as e:
+            print(f"JSON解析错误: {e}")
+            print(f"响应内容: {response.text[:200]}")
+            return None
+        except Exception as e:
+            print(f"未知错误: {e}")
             return None
     
     def update_credentials(self, csrf_token: str, cookie: str):

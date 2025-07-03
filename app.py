@@ -41,24 +41,28 @@ def update_token():
 def fetch_data():
     global scraper, current_data
     
-    if not scraper:
-        return jsonify({'error': '请先更新Token信息'}), 400
+    try:
+        if not scraper:
+            return jsonify({'error': '请先更新Token信息'}), 400
+        
+        data = scraper.fetch_songs_data()
+        if data is None:
+            return jsonify({'error': '获取数据失败，请检查Token是否有效'}), 400
+        
+        current_data = data
+        
+        # 创建可视化图表
+        charts = create_charts(data)
+        
+        return jsonify({
+            'success': True,
+            'charts': charts,
+            'data_preview': data.head(10).to_dict('records'),
+            'total_songs': len(data)
+        })
     
-    data = scraper.fetch_songs_data()
-    if data is None:
-        return jsonify({'error': '获取数据失败，请检查Token是否有效'}), 400
-    
-    current_data = data
-    
-    # 创建可视化图表
-    charts = create_charts(data)
-    
-    return jsonify({
-        'success': True,
-        'charts': charts,
-        'data_preview': data.head(10).to_dict('records'),
-        'total_songs': len(data)
-    })
+    except Exception as e:
+        return jsonify({'error': f'处理数据时出错: {str(e)}'}), 500
 
 def create_charts(df):
     """创建各种图表"""
@@ -137,7 +141,7 @@ def create_charts(df):
             pass
     
     # 图表4：数值字段统计
-    numeric_cols = df.select_dtypes
+    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
     if len(numeric_cols) > 0:
         fig4 = go.Figure()
         
