@@ -19,6 +19,10 @@ current_data = None
 def index():
     return render_template('index.html')
 
+@app.route('/health')
+def health_check():
+    return jsonify({'status': 'healthy', 'message': '网易云音乐数据可视化平台运行正常'})
+
 @app.route('/update_token', methods=['POST'])
 def update_token():
     global scraper
@@ -133,7 +137,7 @@ def create_charts(df):
             pass
     
     # 图表4：数值字段统计
-    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
+    numeric_cols = df.select_dtypes
     if len(numeric_cols) > 0:
         fig4 = go.Figure()
         
