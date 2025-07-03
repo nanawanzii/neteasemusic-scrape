@@ -3,244 +3,273 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>网易云音乐数据可视化</title>
+    <title>网易云音乐数据爬虫</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
-        .chart-container {
-            margin: 20px 0;
-            padding: 20px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            background: #f9f9f9;
+        .container { max-width: 1200px; }
+        .data-table { max-height: 500px; overflow-y: auto; }
+        .stats-card { background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0; }
+        .loading { display: none; text-align: center; margin: 20px; }
+        .token-section { background: #e3f2fd; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .data-section { display: none; }
+        .chart-container { 
+            background: white; 
+            padding: 20px; 
+            margin: 15px 0; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
         }
-        .data-preview {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 20px;
-        }
-        .token-form {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+        .charts-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr)); 
+            gap: 20px; 
+            margin: 20px 0; 
         }
     </style>
 </head>
 <body>
-    <div class="container mt-5">
-        <h1 class="text-center mb-4">🎵 网易云音乐数据可视化平台</h1>
+    <div class="container mt-4">
+        <h1 class="text-center mb-4">🎵 网易云音乐数据爬虫</h1>
         
-        <!-- Flash Messages -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-        
-        <!-- Token更新表单 -->
-        <div class="token-form">
-            <h3>🔑 更新访问凭证</h3>
-            <p class="text-muted">由于网易云的csrf_token会定期更新，请在这里输入最新的token和cookie信息</p>
-            
-            <form method="POST" action="/update_token">
-                <div class="mb-3">
-                    <label for="csrf_token" class="form-label">CSRF Token:</label>
-                    <input type="text" class="form-control" id="csrf_token" name="csrf_token" 
-                           placeholder="例如: 5934cf5edd482db20023fbd2521586c3" required>
-                    <div class="form-text">从网易云音乐网页的网络请求中获取最新的csrf_token</div>
+        <!-- Token配置区域 -->
+        <div class="token-section">
+            <h3>🔑 配置访问凭证</h3>
+            <div class="row">
+                <div class="col-md-6">
+                    <label class="form-label">CSRF Token:</label>
+                    <input type="text" id="csrf_token" class="form-control" placeholder="输入最新的csrf_token">
                 </div>
-                
-                <div class="mb-3">
-                    <label for="cookie" class="form-label">Cookie:</label>
-                    <textarea class="form-control" id="cookie" name="cookie" rows="3" 
-                              placeholder="完整的cookie字符串..." required></textarea>
-                    <div class="form-text">从浏览器开发者工具中复制完整的cookie</div>
+                <div class="col-md-6">
+                    <label class="form-label">Cookie:</label>
+                    <textarea id="cookie" class="form-control" rows="3" placeholder="输入完整的cookie"></textarea>
                 </div>
-                
-                <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-key"></i> 更新Token
-                </button>
-            </form>
+            </div>
+            <div class="mt-3">
+                <button class="btn btn-primary" onclick="updateToken()">更新Token</button>
+                <button class="btn btn-success ms-2" onclick="fetchData()">获取数据</button>
+            </div>
         </div>
         
-        <!-- 数据获取按钮 -->
-        <div class="text-center mb-4">
-            <button id="fetchDataBtn" class="btn btn-success btn-lg" onclick="fetchData()">
-                <i class="bi bi-download"></i> 获取音乐数据
-            </button>
-        </div>
+        <!-- 状态显示 -->
+        <div id="status" class="alert" style="display: none;"></div>
         
         <!-- 加载动画 -->
         <div class="loading" id="loading">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
+            <div class="spinner-border text-primary"></div>
+            <p class="mt-2">正在处理...</p>
+        </div>
+        
+        <!-- 数据展示区域 -->
+        <div class="data-section" id="dataSection">
+            <!-- 统计信息 -->
+            <div class="stats-card">
+                <h4>📊 数据统计</h4>
+                <div id="statsInfo"></div>
             </div>
-            <p class="mt-2">正在获取数据...</p>
-        </div>
-        
-        <!-- 数据统计 -->
-        <div id="dataStats" style="display: none;" class="alert alert-info">
-            <h5>📊 数据统计</h5>
-            <p id="statsText"></p>
-        </div>
-        
-        <!-- 下载选项 -->
-        <div id="downloadSection" style="display: none;" class="text-center mb-4">
-            <h4>📥 下载数据</h4>
-            <div class="btn-group" role="group">
-                <a href="/download/excel" class="btn btn-outline-success">
-                    <i class="bi bi-file-earmark-excel"></i> Excel (.xlsx)
-                </a>
-                <a href="/download/csv" class="btn btn-outline-primary">
-                    <i class="bi bi-file-earmark-text"></i> CSV
-                </a>
-                <a href="/download/json" class="btn btn-outline-warning">
-                    <i class="bi bi-file-earmark-code"></i> JSON
-                </a>
+            
+            <!-- 下载选项 -->
+            <div class="text-center mb-4">
+                <h4>📥 下载数据</h4>
+                <button class="btn btn-success me-2" onclick="downloadData('excel')">下载 Excel</button>
+                <button class="btn btn-primary me-2" onclick="downloadData('csv')">下载 CSV</button>
+                <button class="btn btn-warning" onclick="downloadData('json')">下载 JSON</button>
             </div>
-        </div>
-        
-        <!-- 图表容器 -->
-        <div id="chartsContainer"></div>
-        
-        <!-- 数据预览 -->
-        <div id="dataPreview" style="display: none;">
-            <h4>📋 数据预览</h4>
-            <div class="data-preview">
-                <table class="table table-striped table-hover">
-                    <thead class="table-dark">
-                        <tr id="tableHeader"></tr>
-                    </thead>
-                    <tbody id="tableBody"></tbody>
-                </table>
+            
+            <!-- 可视化图表 -->
+            <div id="chartsSection" style="display: none;">
+                <h4>📊 数据可视化</h4>
+                <div class="charts-grid" id="chartsContainer"></div>
+            </div>
+            
+            <!-- 数据预览 -->
+            <div>
+                <h4>📋 数据预览</h4>
+                <div class="data-table">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr id="tableHeader"></tr>
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        async function fetchData() {
-            const btn = document.getElementById('fetchDataBtn');
-            const loading = document.getElementById('loading');
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `alert alert-${type}`;
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
             
-            btn.disabled = true;
-            loading.style.display = 'block';
+            // 3秒后自动隐藏
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 3000);
+        }
+        
+        function showLoading(show = true) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+        
+        async function updateToken() {
+            const csrf_token = document.getElementById('csrf_token').value.trim();
+            const cookie = document.getElementById('cookie').value.trim();
+            
+            if (!csrf_token || !cookie) {
+                showStatus('请填写完整的Token和Cookie信息', 'warning');
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                const response = await fetch('/update_token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ csrf_token, cookie })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showStatus(result.message, 'success');
+                } else {
+                    showStatus(result.message, 'danger');
+                }
+                
+            } catch (error) {
+                showStatus('更新Token时出错: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        async function fetchData() {
+            showLoading(true);
             
             try {
                 const response = await fetch('/fetch_data', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: { 'Content-Type': 'application/json' }
                 });
                 
-                // 检查响应是否成功
-                if (!response.ok) {
-                    throw new Error(`HTTP错误: ${response.status}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    showStatus(result.message, 'success');
+                    displayData(result.data, result.stats);
+                    if (result.charts) {
+                        displayCharts(result.charts);
+                    }
+                    document.getElementById('dataSection').style.display = 'block';
+                } else {
+                    showStatus(result.message, 'danger');
                 }
-                
-                // 检查响应是否为JSON
-                const contentType = response.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                    const text = await response.text();
-                    throw new Error(`服务器返回非JSON响应: ${text.substring(0, 100)}`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.error) {
-                    alert('错误: ' + data.error);
-                    return;
-                }
-                
-                // 显示统计信息
-                document.getElementById('statsText').textContent = 
-                    `成功获取 ${data.total_songs} 首歌曲的数据`;
-                document.getElementById('dataStats').style.display = 'block';
-                
-                // 显示下载选项
-                document.getElementById('downloadSection').style.display = 'block';
-                
-                // 渲染图表
-                renderCharts(data.charts);
-                
-                // 显示数据预览
-                renderDataPreview(data.data_preview);
                 
             } catch (error) {
-                alert('获取数据时出错: ' + error.message);
+                showStatus('获取数据时出错: ' + error.message, 'danger');
             } finally {
-                btn.disabled = false;
-                loading.style.display = 'none';
+                showLoading(false);
             }
         }
         
-        function renderCharts(charts) {
+        function displayData(data, stats) {
+            // 显示统计信息
+            const statsDiv = document.getElementById('statsInfo');
+            statsDiv.innerHTML = `
+                <p><strong>歌曲总数:</strong> ${stats.total_songs}</p>
+                <p><strong>数据列:</strong> ${stats.columns.join(', ')}</p>
+            `;
+            
+            // 显示数据表格
+            if (data && data.length > 0) {
+                const headerRow = document.getElementById('tableHeader');
+                const tableBody = document.getElementById('tableBody');
+                
+                // 清空现有内容
+                headerRow.innerHTML = '';
+                tableBody.innerHTML = '';
+                
+                // 创建表头
+                const headers = Object.keys(data[0]);
+                headers.forEach(header => {
+                    const th = document.createElement('th');
+                    th.textContent = header;
+                    headerRow.appendChild(th);
+                });
+                
+                // 创建表格行
+                data.forEach(row => {
+                    const tr = document.createElement('tr');
+                    headers.forEach(header => {
+                        const td = document.createElement('td');
+                        td.textContent = row[header] || '';
+                        tr.appendChild(td);
+                    });
+                    tableBody.appendChild(tr);
+                });
+            }
+        }
+        
+        function displayCharts(charts) {
             const container = document.getElementById('chartsContainer');
             container.innerHTML = '';
             
             const chartTitles = {
                 'top_songs': '🎵 热门歌曲排行',
-                'category_distribution': '📊 分类分布',
-                'time_trend': '📈 时间趋势',
-                'numeric_distribution': '📐 数值分布'
+                'numeric_comparison': '📊 数值字段分布对比',
+                'scatter_plot': '🔗 关系图',
+                'pie_chart': '📈 分布饼图',
+                'avg_comparison': '📈 平均值对比'
             };
             
+            let hasCharts = false;
+            
             Object.keys(charts).forEach(chartKey => {
-                const chartDiv = document.createElement('div');
-                chartDiv.className = 'chart-container';
-                chartDiv.innerHTML = `
-                    <h5>${chartTitles[chartKey] || '图表'}</h5>
-                    <div id="${chartKey}" style="height: 400px;"></div>
-                `;
-                container.appendChild(chartDiv);
-                
-                const plotData = JSON.parse(charts[chartKey]);
-                Plotly.newPlot(chartKey, plotData.data, plotData.layout, {responsive: true});
+                if (charts[chartKey]) {
+                    hasCharts = true;
+                    const chartDiv = document.createElement('div');
+                    chartDiv.className = 'chart-container';
+                    
+                    const chartId = `chart_${chartKey}`;
+                    chartDiv.innerHTML = `
+                        <h5>${chartTitles[chartKey] || chartKey}</h5>
+                        <div id="${chartId}"></div>
+                    `;
+                    
+                    container.appendChild(chartDiv);
+                    
+                    try {
+                        const plotData = JSON.parse(charts[chartKey]);
+                        Plotly.newPlot(chartId, plotData.data, plotData.layout, {
+                            responsive: true,
+                            displayModeBar: true
+                        });
+                    } catch (e) {
+                        console.error('渲染图表时出错:', e);
+                        chartDiv.innerHTML = `<p class="text-danger">图表渲染失败: ${e.message}</p>`;
+                    }
+                }
             });
+            
+            if (hasCharts) {
+                document.getElementById('chartsSection').style.display = 'block';
+            }
         }
         
-        function renderDataPreview(data) {
-            if (!data || data.length === 0) return;
+        function downloadData(format) {
+            const link = document.createElement('a');
+            link.href = `/download/${format}`;
+            link.download = `netease_music_data.${format}`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
             
-            const headerRow = document.getElementById('tableHeader');
-            const tableBody = document.getElementById('tableBody');
-            
-            // 清空现有内容
-            headerRow.innerHTML = '';
-            tableBody.innerHTML = '';
-            
-            // 创建表头
-            const headers = Object.keys(data[0]);
-            headers.forEach(header => {
-                const th = document.createElement('th');
-                th.textContent = header;
-                headerRow.appendChild(th);
-            });
-            
-            // 创建表格行
-            data.forEach(row => {
-                const tr = document.createElement('tr');
-                headers.forEach(header => {
-                    const td = document.createElement('td');
-                    td.textContent = row[header] || '';
-                    tr.appendChild(td);
-                });
-                tableBody.appendChild(tr);
-            });
-            
-            document.getElementById('dataPreview').style.display = 'block';
+            showStatus(`正在下载 ${format.toUpperCase()} 文件...`, 'info');
         }
     </script>
 </body>
