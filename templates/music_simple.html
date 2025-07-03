@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>网易云音乐爬虫简易版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f7f7f7; }
+        .container { max-width: 700px; margin-top: 40px; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px #0001; padding: 32px; }
+        .form-label { font-weight: bold; }
+        .table-preview { font-size: 13px; }
+        .btn-download { margin-right: 10px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2 class="mb-4 text-center">🎵 网易云音乐爬虫（简洁美观版）</h2>
+    <div class="mb-3">
+        <label class="form-label">CSRF Token</label>
+        <input type="text" class="form-control" id="csrf_token" placeholder="请输入csrf_token">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Cookie</label>
+        <textarea class="form-control" id="cookie" rows="3" placeholder="请输入完整cookie"></textarea>
+    </div>
+    <div class="mb-3 text-center">
+        <button class="btn btn-primary" onclick="fetchData()">获取数据</button>
+        <button class="btn btn-success btn-download" onclick="downloadFile('csv')">下载CSV</button>
+        <button class="btn btn-warning btn-download" onclick="downloadFile('xlsx')">下载Excel</button>
+    </div>
+    <div id="msg" class="mb-2 text-center"></div>
+    <div id="preview"></div>
+</div>
+<script>
+function fetchData() {
+    document.getElementById('msg').innerHTML = '正在获取...';
+    document.getElementById('preview').innerHTML = '';
+    fetch('/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            csrf_token: document.getElementById('csrf_token').value,
+            cookie: document.getElementById('cookie').value
+        })
+    })
+    .then(r => r.json())
+    .then(res => {
+        if(res.success) {
+            document.getElementById('msg').innerHTML = `共 ${res.count} 条，预览前10条：`;
+            let html = '<div style="overflow-x:auto;"><table class="table table-bordered table-hover table-sm table-preview align-middle" style="min-width:900px;max-width:100%;margin:0 auto;">';
+            html += '<thead class="table-light"><tr>';
+            res.columns.forEach(col => html += `<th style=\"white-space:nowrap;\">${col}</th>`);
+            html += '</tr></thead><tbody>';
+            res.preview.forEach(row => {
+                html += '<tr>';
+                res.columns.forEach(col => html += `<td style=\"max-width:200px;overflow:auto;word-break:break-all;\">${row[col]||''}</td>`);
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+            document.getElementById('preview').innerHTML = html;
+        } else {
+            document.getElementById('msg').innerHTML = '<span class="text-danger">' + res.msg + '</span>';
+        }
+    })
+    .catch(e => {
+        document.getElementById('msg').innerHTML = '<span class="text-danger">请求失败</span>';
+    });
+}
+function downloadFile(fmt) {
+    let form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/download/' + fmt;
+    form.style.display = 'none';
+    let csrf = document.createElement('input');
+    csrf.name = 'csrf_token';
+    csrf.value = document.getElementById('csrf_token').value;
+    form.appendChild(csrf);
+    let cookie = document.createElement('input');
+    cookie.name = 'cookie';
+    cookie.value = document.getElementById('cookie').value;
+    form.appendChild(cookie);
+    document.body.appendChild(form);
+    form.submit();
+    setTimeout(() => document.body.removeChild(form), 1000);
+}
+</script>
+</body>
+</html>
